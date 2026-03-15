@@ -156,14 +156,20 @@ pub fn get_variables(operation: Operation) -> List(Variable) {
 
 /// Get the variable name from a Variable
 pub fn get_variable_name(variable: Variable) -> String {
-  let parser.Variable(name, _) = variable
+  let parser.Variable(name, _, _) = variable
   name
 }
 
 /// Get the variable type as a string (swell stores types as strings)
 pub fn get_variable_type_string(variable: Variable) -> String {
-  let parser.Variable(_, type_str) = variable
+  let parser.Variable(_, type_str, _) = variable
   type_str
+}
+
+/// Get the variable default value as an Option(ArgumentValue).
+pub fn get_variable_default_value(variable: Variable) -> Option(ArgumentValue) {
+  let parser.Variable(_, _, default_value) = variable
+  default_value
 }
 
 /// Get all fragment definitions from a document

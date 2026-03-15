@@ -289,7 +289,7 @@ fn serialize_variables(variables: List(parser.Variable)) -> String {
       let vars_str =
         vars
         |> list.map(fn(var) {
-          let parser.Variable(name, type_str) = var
+          let parser.Variable(name, type_str, _) = var
           "$" <> name <> ": " <> type_str
         })
         |> list.intersperse(", ")

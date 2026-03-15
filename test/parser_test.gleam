@@ -211,8 +211,6 @@ pub fn parse_empty_query_test() {
 }
 
 // Test: Parse variable with list type
-// NOTE: Swell's parser currently doesn't support list types in variable definitions
-// This is a known limitation: https://github.com/giacomocavalieri/swell/issues/X
 pub fn parse_variable_list_type_test() {
   let source =
     "
@@ -225,8 +223,29 @@ pub fn parse_variable_list_type_test() {
 
   let result = graphql_ast.parse(source)
 
-  // For now, this is expected to fail until swell supports list types in variables
-  should.be_error(result)
+  should.be_ok(result)
+  let assert Ok(operation) = result
+
+  let variables = graphql_ast.get_variables(operation)
+
+  variables
+  |> list.length()
+  |> should.equal(1)
+
+  // Check first variable
+  let assert [var] = variables
+
+  var
+  |> graphql_ast.get_variable_name()
+  |> should.equal("ids")
+
+  var
+  |> graphql_ast.get_variable_type_string()
+  |> should.equal("[ID!]!")
+
+  var
+  |> graphql_ast.get_variable_default_value()
+  |> should.equal(None)
 }
 
 // Test: Parse variable with non-null type

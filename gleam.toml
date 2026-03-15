@@ -1,11 +1,11 @@
 name = "squall"
-version = "1.1.1"
+version = "1.1.2"
 description = "☁️ Type-safe GraphQL client generator for Gleam"
 licences = ["Apache-2.0"]
 repository = { type = "github", user = "bigmoves", repo = "squall" }
 
 [dependencies]
-gleam_stdlib = ">= 0.65.0 and < 0.66.0"
+gleam_stdlib = ">= 0.65.0 and < 2.0.0"
 gleam_json = ">= 3.0.0 and < 4.0.0"
 gleam_http = ">= 4.3.0 and < 5.0.0"
 gleam_httpc = ">= 5.0.0 and < 6.0.0"
@@ -13,7 +13,7 @@ simplifile = ">= 2.0.0 and < 3.0.0"
 filepath = ">= 1.0.0 and < 2.0.0"
 glam = ">= 2.0.0 and < 3.0.0"
 argv = ">= 1.0.0 and < 2.0.0"
-swell = ">= 1.0.0 and < 2.0.0"
+swell = ">= 2.0.0 and < 3.0.0"
 
 [dev-dependencies]
 gleeunit = ">= 1.0.0 and < 2.0.0"

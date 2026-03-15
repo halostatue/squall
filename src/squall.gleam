@@ -1,6 +1,7 @@
 import gleam/dynamic/decode
 import gleam/http
 import gleam/http/request.{type Request}
+import gleam/int
 import gleam/json
 import gleam/list
 import gleam/result
@@ -228,7 +229,7 @@ fn generate(endpoint: String) {
       case discovery.find_graphql_files("src") {
         Ok(files) -> {
           io.println(
-            "✓ Found " <> int_to_string(list.length(files)) <> " .gql file(s)\n",
+            "✓ Found " <> int.to_string(list.length(files)) <> " .gql file(s)\n",
           )
 
           // Process each file
@@ -421,7 +422,7 @@ fn make_graphql_request(
     _ ->
       Error(
         "HTTP request failed with status "
-        <> int_to_string(resp.status)
+        <> int.to_string(resp.status)
         <> ": "
         <> resp.body,
       )
@@ -442,7 +443,7 @@ fn unstable_cache(endpoint: String) {
   case query_extractor.scan_component_files("src") {
     Ok(files) -> {
       io.println(
-        "✓ Found " <> int_to_string(list.length(files)) <> " .gleam file(s)\n",
+        "✓ Found " <> int.to_string(list.length(files)) <> " .gleam file(s)\n",
       )
 
       // Extract queries from each file
@@ -476,7 +477,7 @@ fn unstable_cache(endpoint: String) {
         _ -> {
           io.println(
             "\n✓ Extracted "
-            <> int_to_string(list.length(all_queries))
+            <> int.to_string(list.length(all_queries))
             <> " quer"
             <> case list.length(all_queries) {
               1 -> "y"
@@ -629,28 +630,4 @@ fn to_snake_case(s: String) -> String {
 @target(erlang)
 fn is_uppercase(s: String) -> Bool {
   s == string.uppercase(s) && s != string.lowercase(s)
-}
-
-@target(erlang)
-fn int_to_string(i: Int) -> String {
-  case i {
-    0 -> "0"
-    1 -> "1"
-    2 -> "2"
-    3 -> "3"
-    4 -> "4"
-    5 -> "5"
-    6 -> "6"
-    7 -> "7"
-    8 -> "8"
-    9 -> "9"
-    _ -> {
-      // For larger numbers, convert via string representation
-      let s = i
-      case s >= 0 {
-        True -> int_to_string(s / 10) <> int_to_string(s % 10)
-        False -> "-" <> int_to_string(-s)
-      }
-    }
-  }
 }

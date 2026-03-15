@@ -1,4 +1,4 @@
-import gleam/json
+import gleam/int
 
 pub type Error {
   // HTTP/Network errors
@@ -29,7 +29,7 @@ pub fn to_string(error: Error) -> String {
   case error {
     HttpRequestFailed(reason) -> "HTTP request failed: " <> reason
     HttpInvalidResponse(status, body) ->
-      "Invalid HTTP response (status " <> int_to_string(status) <> "): " <> body
+      "Invalid HTTP response (status " <> int.to_string(status) <> "): " <> body
     SchemaIntrospectionFailed(reason) ->
       "Schema introspection failed: " <> reason
     InvalidSchemaResponse(reason) -> "Invalid schema response: " <> reason
@@ -41,7 +41,7 @@ pub fn to_string(error: Error) -> String {
       "Invalid GraphQL syntax in "
       <> file
       <> " at line "
-      <> int_to_string(line)
+      <> int.to_string(line)
       <> ": "
       <> message
     InvalidOperationName(file, name, reason) ->
@@ -50,15 +50,5 @@ pub fn to_string(error: Error) -> String {
       "Unsupported GraphQL type '" <> type_name <> "' in " <> file
     InvalidTypeMapping(reason) -> "Invalid type mapping: " <> reason
     CodeGenerationFailed(reason) -> "Code generation failed: " <> reason
-  }
-}
-
-fn int_to_string(i: Int) -> String {
-  case i {
-    _ -> {
-      // Use string builder for int to string
-      let assert Ok(s) = json.to_string(json.int(i)) |> Ok
-      s
-    }
   }
 }
