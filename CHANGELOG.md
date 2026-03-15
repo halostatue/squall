@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-MM-DD
+
+### Changed
+
+- **Upgrade dependencies**
+
+  - The workflow now tests with Gleam 1.14.0.
+  - Upgraded `gleam_stdlib` to support the current version.
+
+  - Upgrade `swell` from ~> 1.0 to ~> 2.0, which required only changes around
+    `parser.Variable` being a /3 enum instead of a /2 enum. Added
+    `get_variable_default_value/1`.
+
+    Because Swell 2.0 _does_ support list arguments, changed
+    `parse_variable_list_type_test` to pass and verify.
+
+- **Cleaned Up**
+  - Removed `int_to_string` from two modules, since all supported versions of
+    stdlib provide `int.to_string/1`.
+
 ## [1.1.1] - 2025-11-12
 
 ### Changed
