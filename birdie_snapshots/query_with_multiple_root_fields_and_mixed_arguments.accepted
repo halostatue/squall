@@ -1,5 +1,5 @@
 ---
-version: 1.4.1
+version: 1.5.4
 title: Query with multiple root fields and mixed arguments
 file: ./test/codegen_test.gleam
 test_name: generate_multiple_root_fields_test
@@ -20,24 +20,6 @@ pub fn characters_result_decoder() -> decode.Decoder(CharactersResult) {
   decode.success(CharactersResult(info: info, results: results))
 }
 
-pub type Info {
-  Info(count: Option(Int))
-}
-
-pub fn info_decoder() -> decode.Decoder(Info) {
-  use count <- decode.field("count", decode.optional(decode.int))
-  decode.success(Info(count: count))
-}
-
-pub type Character {
-  Character(name: Option(String))
-}
-
-pub fn character_decoder() -> decode.Decoder(Character) {
-  use name <- decode.field("name", decode.optional(decode.string))
-  decode.success(Character(name: name))
-}
-
 pub type Location {
   Location(id: Option(String))
 }
@@ -56,6 +38,24 @@ pub fn episode_decoder() -> decode.Decoder(Episode) {
   decode.success(Episode(id: id))
 }
 
+pub type Info {
+  Info(count: Option(Int))
+}
+
+pub fn info_decoder() -> decode.Decoder(Info) {
+  use count <- decode.field("count", decode.optional(decode.int))
+  decode.success(Info(count: count))
+}
+
+pub type Character {
+  Character(name: Option(String))
+}
+
+pub fn character_decoder() -> decode.Decoder(Character) {
+  use name <- decode.field("name", decode.optional(decode.string))
+  decode.success(Character(name: name))
+}
+
 pub fn characters_result_to_json(input: CharactersResult) -> json.Json {
   json.object(
     [
@@ -68,20 +68,20 @@ pub fn characters_result_to_json(input: CharactersResult) -> json.Json {
   )
 }
 
-pub fn info_to_json(input: Info) -> json.Json {
-  json.object([#("count", json.nullable(input.count, json.int))])
-}
-
-pub fn character_to_json(input: Character) -> json.Json {
-  json.object([#("name", json.nullable(input.name, json.string))])
-}
-
 pub fn location_to_json(input: Location) -> json.Json {
   json.object([#("id", json.nullable(input.id, json.string))])
 }
 
 pub fn episode_to_json(input: Episode) -> json.Json {
   json.object([#("id", json.nullable(input.id, json.string))])
+}
+
+pub fn info_to_json(input: Info) -> json.Json {
+  json.object([#("count", json.nullable(input.count, json.int))])
+}
+
+pub fn character_to_json(input: Character) -> json.Json {
+  json.object([#("name", json.nullable(input.name, json.string))])
 }
 
 pub type MultiQueryResponse {

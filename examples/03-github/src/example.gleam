@@ -2,12 +2,15 @@ import gleam/http/request
 import gleam/io
 import gleam/result
 
+import envoy
 import squall
 
 // Import the generated GraphQL code
-import graphql/get_character
-import graphql/get_character_with_fragment
+import graphql/starred_repos
 
+// import graphql/user_starred_repos
+
+// For Erlang target (default)
 @target(erlang)
 import gleam/httpc
 
@@ -17,38 +20,23 @@ import gleam/fetch
 import gleam/javascript/promise
 
 pub fn main() {
-  let client = squall.new("https://rickandmortyapi.com/graphql", [])
+  let assert Ok(token) = envoy.get("GH_TOKEN")
+  let client = squall.new_with_auth("https://api.github.com/graphql", token)
 
-  // Example 1: Simple query
   io.println("=== Simple Query ===")
-  let assert Ok(request) = get_character.get_character(client, "1")
-
-  request
-  |> send()
-  |> print()
-
-  // Example 2: Query with fragments
-  io.println("\n=== Query with Fragments ===")
-  let assert Ok(request) =
-    get_character_with_fragment.get_character_with_fragment(client, "1")
+  let assert Ok(request) = starred_repos.starred_repos(client, "")
 
   request
   |> send()
   |> print()
 }
 
+// ==================== ERLANG HTTP CLIENT ====================
 @target(erlang)
 fn send(request: request.Request(String)) -> Result(String, String) {
-  request
-  |> httpc.send()
+  httpc.send(request)
   |> result.map(fn(resp) { resp.body })
   |> result.map_error(fn(_) { "HTTP request failed" })
-}
-
-@target(erlang)
-fn print(result: Result(String, String)) {
-  let assert Ok(body) = result
-  io.println(body)
 }
 
 @target(javascript)
@@ -64,14 +52,16 @@ fn send(
   })
 }
 
+@target(erlang)
+fn print(result: Result(String, String)) {
+  let assert Ok(body) = result
+  io.println(body)
+}
+
 @target(javascript)
-fn print(
-  promised_result: promise.Promise(Result(String, String)),
-) -> promise.Promise(Nil) {
-  promise.await(promised_result, fn(result) {
+fn print(promised_result: promise.Promise(Result(String, String))) {
+  promise.tap(promised_result, fn(result) {
     let assert Ok(body) = result
     io.println(body)
-
-    promise.resolve(Nil)
   })
 }

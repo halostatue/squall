@@ -2411,3 +2411,268 @@ pub fn generate_mutation_with_optional_enum_in_input_test() {
     Error(_) -> Nil
   }
 }
+
+// Test: Same GraphQL type with different selection sets gets disambiguated
+pub fn generate_disambiguated_same_type_different_selections_test() {
+  let query_source =
+    "
+    query GetRepo {
+      repo {
+        name
+        description
+        parent {
+          name
+        }
+      }
+    }
+  "
+
+  let assert Ok(operation) = graphql_ast.parse(query_source)
+
+  let repo_fields = [
+    schema.Field(
+      "name",
+      schema.NonNullType(schema.NamedType("String", schema.Scalar)),
+      [],
+      None,
+    ),
+    schema.Field(
+      "description",
+      schema.NamedType("String", schema.Scalar),
+      [],
+      None,
+    ),
+    schema.Field(
+      "parent",
+      schema.NamedType("Repository", schema.Object),
+      [],
+      None,
+    ),
+  ]
+
+  let mock_schema =
+    schema.Schema(
+      Some("Query"),
+      None,
+      None,
+      dict.from_list([
+        #("Repository", schema.ObjectType("Repository", repo_fields, None)),
+        #(
+          "Query",
+          schema.ObjectType(
+            "Query",
+            [
+              schema.Field(
+                "repo",
+                schema.NonNullType(schema.NamedType("Repository", schema.Object)),
+                [],
+                None,
+              ),
+            ],
+            None,
+          ),
+        ),
+      ]),
+    )
+
+  let result =
+    codegen.generate_operation(
+      "get_repo",
+      query_source,
+      operation,
+      mock_schema,
+      "",
+    )
+
+  case result {
+    Ok(code) -> {
+      code
+      |> birdie.snap(
+        title: "Same type with different selections gets disambiguated",
+      )
+    }
+    Error(_) -> Nil
+  }
+}
+
+// Test: Deeply nested same type gets unique names at each level
+pub fn generate_disambiguated_deeply_nested_same_type_test() {
+  let query_source =
+    "
+    query GetRepo {
+      repo {
+        name
+        description
+        parent {
+          name
+          parent {
+            name
+          }
+        }
+      }
+    }
+  "
+
+  let assert Ok(operation) = graphql_ast.parse(query_source)
+
+  let repo_fields = [
+    schema.Field(
+      "name",
+      schema.NonNullType(schema.NamedType("String", schema.Scalar)),
+      [],
+      None,
+    ),
+    schema.Field(
+      "description",
+      schema.NamedType("String", schema.Scalar),
+      [],
+      None,
+    ),
+    schema.Field(
+      "parent",
+      schema.NamedType("Repository", schema.Object),
+      [],
+      None,
+    ),
+  ]
+
+  let mock_schema =
+    schema.Schema(
+      Some("Query"),
+      None,
+      None,
+      dict.from_list([
+        #("Repository", schema.ObjectType("Repository", repo_fields, None)),
+        #(
+          "Query",
+          schema.ObjectType(
+            "Query",
+            [
+              schema.Field(
+                "repo",
+                schema.NonNullType(schema.NamedType("Repository", schema.Object)),
+                [],
+                None,
+              ),
+            ],
+            None,
+          ),
+        ),
+      ]),
+    )
+
+  let result =
+    codegen.generate_operation(
+      "get_repo",
+      query_source,
+      operation,
+      mock_schema,
+      "",
+    )
+
+  case result {
+    Ok(code) -> {
+      code
+      |> birdie.snap(
+        title: "Deeply nested same type gets unique names at each level",
+      )
+    }
+    Error(_) -> Nil
+  }
+}
+
+// Test: Same type disambiguated when introduced via fragment spread
+pub fn generate_disambiguated_same_type_via_fragment_test() {
+  let query_source =
+    "
+    fragment RepoSummary on Repository {
+      name
+    }
+
+    query GetRepo {
+      repo {
+        name
+        description
+        parent {
+          name
+
+          parent {
+            ...RepoSummary
+
+            nameWithOwner
+          }
+        }
+      }
+    }
+  "
+
+  let assert Ok(document) = graphql_ast.parse_document(query_source)
+  let assert Ok(operation) = graphql_ast.get_main_operation(document)
+  let fragments = graphql_ast.get_fragment_definitions(document)
+
+  let repo_fields = [
+    schema.Field(
+      "name",
+      schema.NonNullType(schema.NamedType("String", schema.Scalar)),
+      [],
+      None,
+    ),
+    schema.Field(
+      "description",
+      schema.NamedType("String", schema.Scalar),
+      [],
+      None,
+    ),
+    schema.Field(
+      "parent",
+      schema.NamedType("Repository", schema.Object),
+      [],
+      None,
+    ),
+  ]
+
+  let mock_schema =
+    schema.Schema(
+      Some("Query"),
+      None,
+      None,
+      dict.from_list([
+        #("Repository", schema.ObjectType("Repository", repo_fields, None)),
+        #(
+          "Query",
+          schema.ObjectType(
+            "Query",
+            [
+              schema.Field(
+                "repo",
+                schema.NonNullType(schema.NamedType("Repository", schema.Object)),
+                [],
+                None,
+              ),
+            ],
+            None,
+          ),
+        ),
+      ]),
+    )
+
+  let result =
+    codegen.generate_operation_with_fragments(
+      "get_repo",
+      query_source,
+      operation,
+      fragments,
+      mock_schema,
+      "",
+    )
+
+  case result {
+    Ok(code) -> {
+      code
+      |> birdie.snap(
+        title: "Same type disambiguated when introduced via fragment spread",
+      )
+    }
+    Error(_) -> Nil
+  }
+}

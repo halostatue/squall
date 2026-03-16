@@ -1,7 +1,10 @@
 import glam/doc.{type Document}
 import gleam/dict
+import gleam/int
 import gleam/list
 import gleam/option
+import gleam/order
+import gleam/pair
 import gleam/result
 import gleam/string
 import squall/internal/error.{type Error}
@@ -22,6 +25,9 @@ pub type GeneratedCode {
 type NestedTypeInfo {
   NestedTypeInfo(
     type_name: String,
+    depth: Int,
+    ancestor_types: List(String),
+    ancestor_fields: List(String),
     fields: List(#(String, schema.TypeRef)),
     field_types: dict.Dict(String, schema.Type),
   )
@@ -257,7 +263,7 @@ pub fn generate_operation(
   source: String,
   operation: graphql_ast.Operation,
   schema_data: schema.Schema,
-  _graphql_endpoint: String,
+  graphql_endpoint: String,
 ) -> Result(String, Error) {
   generate_operation_with_fragments(
     operation_name,
@@ -265,7 +271,7 @@ pub fn generate_operation(
     operation,
     [],
     schema_data,
-    "",
+    graphql_endpoint,
   )
 }
 
@@ -320,11 +326,14 @@ pub fn generate_operation_with_fragments(
   ))
 
   // Collect nested types that need to be generated
-  use nested_types <- result.try(collect_nested_types(
+  use raw_nested_types <- result.try(collect_nested_types(
     expanded_selections,
     root_type,
     schema_data,
   ))
+
+  // Disambiguate: progressively prefix ancestor type names until unique
+  let nested_types = disambiguate_nested_types(raw_nested_types)
 
   // Generate nested type definitions and decoders
   let nested_docs =
@@ -515,11 +524,44 @@ fn collect_field_types(
   })
 }
 
-// Collect nested types that need to be generated
+// Collect nested types that need to be generated.
+//
+// Sorted with a stable sort by depth so that the shallowest fields get bare names during
+// disambiguation.
 fn collect_nested_types(
   selections: List(graphql_ast.Selection),
   parent_type: schema.Type,
   schema_data: schema.Schema,
+) -> Result(List(NestedTypeInfo), Error) {
+  let parent_name = schema.get_type_name(parent_type)
+  use types <- result.try(
+    collect_nested_types_with_path(
+      selections,
+      parent_type,
+      schema_data,
+      [parent_name],
+      [],
+    ),
+  )
+
+  types
+  |> list.index_map(fn(info, i) { #(info, i) })
+  |> list.sort(by: fn(a, b) {
+    order.lazy_break_tie(
+      in: int.compare({ a.0 }.depth, { b.0 }.depth),
+      with: fn() { int.compare(a.1, b.1) },
+    )
+  })
+  |> list.map(fn(pair) { pair.0 })
+  |> Ok
+}
+
+fn collect_nested_types_with_path(
+  selections: List(graphql_ast.Selection),
+  parent_type: schema.Type,
+  schema_data: schema.Schema,
+  ancestor_types: List(String),
+  ancestor_fields: List(String),
 ) -> Result(List(NestedTypeInfo), Error) {
   selections
   |> list.try_map(fn(selection) {
@@ -527,10 +569,8 @@ fn collect_nested_types(
       parser.Field(field_name, _alias, _args, nested_selections) -> {
         // Handle special introspection fields
         case field_name {
-          "__typename" -> {
-            // __typename is a special meta-field that has no nested selections
-            Ok([])
-          }
+          // __typename is a special meta-field that has no nested selections
+          "__typename" -> Ok([])
           _ -> {
             // Find field in parent type
             let fields = schema.get_type_fields(parent_type)
@@ -548,6 +588,7 @@ fn collect_nested_types(
               _ -> {
                 // Get the type name from the field's type reference
                 let type_name = get_base_type_name(field.type_ref)
+                let current_fields = [field_name, ..ancestor_fields]
 
                 // Look up the type in schema
                 use field_type <- result.try(
@@ -563,16 +604,23 @@ fn collect_nested_types(
                   field_type,
                 ))
 
+                let child_ancestors = [type_name, ..ancestor_types]
+
                 // Recursively collect any deeper nested types
-                use deeper_nested <- result.try(collect_nested_types(
+                use deeper_nested <- result.try(collect_nested_types_with_path(
                   nested_selections,
                   field_type,
                   schema_data,
+                  child_ancestors,
+                  current_fields,
                 ))
 
                 let nested_info =
                   NestedTypeInfo(
                     type_name: type_name,
+                    depth: list.length(ancestor_types),
+                    ancestor_types: ancestor_types,
+                    ancestor_fields: current_fields,
                     fields: nested_field_types,
                     field_types: schema_data.types,
                   )
@@ -588,6 +636,169 @@ fn collect_nested_types(
     }
   })
   |> result.map(list.flatten)
+}
+
+// Resolve names by progressively prefixing until unique.
+// First tries ancestor type names, falling back to pascal-cased ancestor field names
+// when type names don't help (e.g., recursive types). Takes groups keyed by current
+// candidate name. Returns list of (resolved_name, info, original_index).
+fn resolve_names(
+  groups: dict.Dict(String, List(#(NestedTypeInfo, Int))),
+  depth: Int,
+) -> List(#(String, NestedTypeInfo, Int)) {
+  let #(resolved, collisions) =
+    dict.fold(groups, #([], dict.new()), fn(acc, name, entries) {
+      let #(done, remaining) = acc
+      case entries {
+        // Type -> [entry] never has collisions
+        [entry] -> #([#(name, entry.0, entry.1), ..done], remaining)
+        // Type -> [first, ..rest] may have collisions in ..rest
+        [first, ..rest] -> {
+          let done = [#(name, first.0, first.1), ..done]
+          let remaining =
+            list.fold(rest, remaining, fn(rem, entry) {
+              let #(info, _idx) = entry
+              // info.ancestor_types[depth]
+              let type_depth = list.first(list.drop(info.ancestor_types, depth))
+
+              let prefix = case type_depth {
+                Ok(a) if a != info.type_name -> Ok(a)
+                _ -> {
+                  // info.ancestor_fields[depth]
+                  let field_depth =
+                    list.first(list.drop(info.ancestor_fields, depth))
+                  case field_depth {
+                    Ok(f) -> Ok(to_pascal_case(f))
+                    Error(_) -> Error(Nil)
+                  }
+                }
+              }
+
+              let new_name = case prefix {
+                Ok(prefix) -> prefix <> name
+                Error(_) -> name <> int.to_string(depth)
+              }
+
+              let existing = case dict.get(rem, new_name) {
+                Ok(es) -> es
+                Error(_) -> []
+              }
+              dict.insert(rem, new_name, list.append(existing, [entry]))
+            })
+          #(done, remaining)
+        }
+        [] -> acc
+      }
+    })
+
+  case dict.is_empty(collisions) {
+    True -> resolved
+    False -> list.append(resolved, resolve_names(collisions, depth + 1))
+  }
+}
+
+// Disambiguate nested types by progressively prefixing ancestor type names
+// until all type_names are unique.
+fn disambiguate_nested_types(
+  nested_types: List(NestedTypeInfo),
+) -> List(NestedTypeInfo) {
+  // Build initial groups keyed by type_name
+  let groups =
+    list.index_fold(nested_types, dict.new(), fn(acc, info, idx) {
+      let existing = case dict.get(acc, info.type_name) {
+        Ok(es) -> es
+        Error(_) -> []
+      }
+
+      // list.append is necessary here because nothing will do list.reverse on this list.
+      dict.insert(acc, info.type_name, list.append(existing, [#(info, idx)]))
+    })
+
+  let resolved = resolve_names(groups, 0)
+
+  // Build child_lookup: (ancestor_types, ancestor_fields, original_type_name) -> resolved_name
+  let child_lookup =
+    list.fold(resolved, dict.new(), fn(acc, entry) {
+      let #(name, info, _) = entry
+      dict.insert(
+        acc,
+        #(info.ancestor_types, info.ancestor_fields, info.type_name),
+        name,
+      )
+    })
+
+  // Rewrite field refs and restore order
+  resolved
+  |> list.map(fn(entry) {
+    let #(resolved_name, info, idx) = entry
+    let child_ancestor_types = [info.type_name, ..info.ancestor_types]
+
+    let #(rev_fields, new_field_types) =
+      list.fold(info.fields, #([], info.field_types), fn(acc, field) {
+        let #(fs, ft) = acc
+        let #(fname, ftype_ref) = field
+        let base = get_base_type_name(ftype_ref)
+        let child_fields = [fname, ..info.ancestor_fields]
+        case
+          dict.get(child_lookup, #(child_ancestor_types, child_fields, base))
+        {
+          Ok(new_name) if new_name != base -> {
+            let updated_ft = case dict.get(ft, base) {
+              Ok(schema_type) ->
+                dict.insert(
+                  ft,
+                  new_name,
+                  rename_schema_type(schema_type, new_name),
+                )
+              Error(_) -> ft
+            }
+            #(
+              [#(fname, rename_type_ref(ftype_ref, new_name)), ..fs],
+              updated_ft,
+            )
+          }
+          _ -> #([field, ..fs], ft)
+        }
+      })
+
+    #(
+      NestedTypeInfo(
+        ..info,
+        type_name: resolved_name,
+        fields: list.reverse(rev_fields),
+        field_types: new_field_types,
+      ),
+      idx,
+    )
+  })
+  |> list.sort(fn(a, b) { int.compare(a.1, b.1) })
+  |> list.map(pair.first)
+}
+
+// Rename the base type name inside a TypeRef, preserving NonNull/List wrappers
+fn rename_type_ref(type_ref: schema.TypeRef, new_name: String) -> schema.TypeRef {
+  case type_ref {
+    schema.NamedType(_, kind) -> schema.NamedType(new_name, kind)
+    schema.NonNullType(inner) ->
+      schema.NonNullType(rename_type_ref(inner, new_name))
+    schema.ListType(inner) -> schema.ListType(rename_type_ref(inner, new_name))
+  }
+}
+
+// Rename a schema.Type's name field
+fn rename_schema_type(t: schema.Type, new_name: String) -> schema.Type {
+  case t {
+    schema.ObjectType(_, fields, desc) ->
+      schema.ObjectType(new_name, fields, desc)
+    schema.InterfaceType(_, fields, desc) ->
+      schema.InterfaceType(new_name, fields, desc)
+    schema.ScalarType(_, desc) -> schema.ScalarType(new_name, desc)
+    schema.UnionType(_, possible, desc) ->
+      schema.UnionType(new_name, possible, desc)
+    schema.EnumType(_, vals, desc) -> schema.EnumType(new_name, vals, desc)
+    schema.InputObjectType(_, fields, desc) ->
+      schema.InputObjectType(new_name, fields, desc)
+  }
 }
 
 // Extract the base type name from a TypeRef (unwrap NonNull and List)

@@ -1,0 +1,79 @@
+---
+version: 1.4.1
+title: Same type with different selections gets disambiguated
+file: ./test/codegen_test.gleam
+test_name: generate_disambiguated_same_type_different_selections_test
+---
+import gleam/dynamic/decode
+import gleam/http/request.{type Request}
+import gleam/json
+import squall
+import gleam/option.{type Option}
+
+pub type Repository {
+  Repository(
+    name: String,
+    description: Option(String),
+    parent: Option(ParentRepository),
+  )
+}
+
+pub fn repository_decoder() -> decode.Decoder(Repository) {
+  use name <- decode.field("name", decode.string)
+  use description <- decode.field("description", decode.optional(decode.string))
+  use parent <- decode.field("parent", decode.optional(parent_repository_decoder()))
+  decode.success(Repository(
+    name: name,
+    description: description,
+    parent: parent,
+  ))
+}
+
+pub type ParentRepository {
+  ParentRepository(name: String)
+}
+
+pub fn parent_repository_decoder() -> decode.Decoder(ParentRepository) {
+  use name <- decode.field("name", decode.string)
+  decode.success(ParentRepository(name: name))
+}
+
+pub fn repository_to_json(input: Repository) -> json.Json {
+  json.object(
+    [
+      #("name", json.string(input.name)),
+      #("description", json.nullable(input.description, json.string)),
+      #("parent", json.nullable(input.parent, parent_repository_to_json)),
+    ],
+  )
+}
+
+pub fn parent_repository_to_json(input: ParentRepository) -> json.Json {
+  json.object([#("name", json.string(input.name))])
+}
+
+pub type GetRepoResponse {
+  GetRepoResponse(repo: Repository)
+}
+
+pub fn get_repo_response_decoder() -> decode.Decoder(GetRepoResponse) {
+  use repo <- decode.field("repo", repository_decoder())
+  decode.success(GetRepoResponse(repo: repo))
+}
+
+pub fn get_repo_response_to_json(input: GetRepoResponse) -> json.Json {
+  json.object([#("repo", repository_to_json(input.repo))])
+}
+
+pub fn get_repo(client: squall.Client) -> Result(Request(String), String) {
+  squall.prepare_request(
+    client,
+    "\n    query GetRepo {\n      repo {\n        name\n        description\n        parent {\n          name\n        }\n      }\n    }\n  ",
+    json.object([]),
+  )
+}
+
+pub fn parse_get_repo_response(body: String) -> Result(GetRepoResponse, String) {
+  squall.parse_response(body, get_repo_response_decoder())
+}
+
